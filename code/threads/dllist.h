@@ -34,3 +34,8 @@ private:
 	DLLElement *first;			// head of the list, NULL if empty
 	DLLElement *last;			// last element of the list, NULL if empty
 };
+
+enum YieldPosition {
+
+};
+
