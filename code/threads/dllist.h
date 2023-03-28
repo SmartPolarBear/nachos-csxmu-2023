@@ -2,7 +2,9 @@
 
 class DLLElement {
 public:
-	DLLElement( void *itemPtr, int sortKey );	// initialize a list element
+	friend class RAIIListValidator;
+	friend class RAIINodeGuard;
+	DLLElement(void* itemPtr, int sortKey);	// initialize a list element
 	
 	DLLElement *next;			// next element on list
 								// NULL if this is the last
@@ -15,7 +17,9 @@ public:
 
 class DLList {
 public:
-	DLList();					// initialize the list
+    friend class RAIIListValidator;
+    
+    DLList();					// initialize the list
 	~DLList();					// de-allocate the list
 
 	void Prepend(void *item);	// add to head of list (set key = min_key-1)
@@ -30,12 +34,29 @@ public:
 	void SortedInsert(void *item, int sortKey);
 	void *SortedRemove(int sortKey);	// remove first item with key==sortKey
 										// return NULL if no such item exists
-private:
-	DLLElement *first;			// head of the list, NULL if empty
+private:    
+    DLLElement* first;			// head of the list, NULL if empty
 	DLLElement *last;			// last element of the list, NULL if empty
 };
 
-enum YieldPosition {
-
+class RAIIListValidator {
+public:
+    RAIIListValidator(DLList& list, const char* tag);
+    ~RAIIListValidator();
+private:
+    bool test();
+    bool is_sorted_asc(DLLElement *head);
+    bool is_sorted_dsc(DLLElement* head);
+    DLList* list_;
+    const char* tag_;
 };
 
+class RAIINodeGuard {
+public:
+	RAIINodeGuard(DLLElement& ele,char *name);
+	~RAIINodeGuard();
+private:
+	void test();
+	DLLElement* ele_;
+	char* name_;
+};

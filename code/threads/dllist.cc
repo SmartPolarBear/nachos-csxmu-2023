@@ -1,7 +1,7 @@
 #include "dllist.h"
 #include "system.h"
 
-#define DEBUG_YIELD_OUTPUT
+// #define DEBUG_YIELD_OUTPUT
 
 #ifdef DEBUG_YIELD_OUTPUT
 #define YIELD_AND_REPORT() \
@@ -16,13 +16,17 @@ currentThread->Yield(); \
 } while (0)
 #endif
 
-
-// reference for threadtest.cc
 extern int errorType;
 
+#define YIELD_ON_TYPE(t) \
+	if (errorType == t || errorType == 10000)	 \
+	{ \
+		YIELD_AND_REPORT(); \
+	} \
 
-/** DLLElement class */
-// initialize a list element
+
+
+
 DLLElement::DLLElement(void* itemPtr, int sortKey)
 {
 	item = itemPtr;
@@ -30,17 +34,12 @@ DLLElement::DLLElement(void* itemPtr, int sortKey)
 	next = prev = NULL;
 }
 
-
-
-/** DLList class */
-// initialize the list
 DLList::DLList()
 {
 	first = last = NULL;
 }
 
 
-// de-allocate the list
 DLList::~DLList()
 {
 	int key;
@@ -51,16 +50,17 @@ DLList::~DLList()
 }
 
 
-// add to head of list (set key = min_key-1)
 void DLList::Prepend(void* item)
 {
+	RAIIListValidator _(*this, __FUNCTION__);
+
 	DLLElement* element = new DLLElement(item, 0);
 
-	if (!IsEmpty())		// list is empty
+	if (!IsEmpty())
 	{
 		first = last = element;
 	}
-	else				// otherwise
+	else
 	{
 		element->key = first->key - 1;
 		element->next = first;
@@ -70,9 +70,10 @@ void DLList::Prepend(void* item)
 }
 
 
-// add to tail of list (set key = max_key+1)
 void DLList::Append(void* item)
 {
+	RAIIListValidator _(*this, __FUNCTION__);
+
 	DLLElement* element = new DLLElement(item, 0);
 
 	if (!IsEmpty())		// list is empty
@@ -89,80 +90,52 @@ void DLList::Append(void* item)
 }
 
 
-// remove from head of list
-//   set *keyPtr to key of the removed item
-//   return item (or NULL if list is empty)
 void* DLList::Remove(int* keyPtr)
 {
-	if (errorType == 101)	// out of order //
-	{
-		YIELD_AND_REPORT();
-	}
 
-	if (!IsEmpty())		// list is empty
+	YIELD_ON_TYPE(101);
+
+	if (!IsEmpty())
 	{
 		keyPtr = NULL;
 		return NULL;
 	}
-	else				// otherwise
+	else
 	{
+		RAIIListValidator _(*this, __FUNCTION__);
 		void* itemPtr;
 		DLLElement* element;
 
-		if (errorType == 102)	// out of order //
-		{
-			YIELD_AND_REPORT();
-		}
+		YIELD_ON_TYPE(102);
 		*keyPtr = first->key;
 		itemPtr = first->item;
 		element = first;
-		if (errorType == 103)	// segment fault //
-		{
-			YIELD_AND_REPORT();
-		}
+		YIELD_ON_TYPE(103);
 
-		if (first->next)	// has more than one element
+
+		if (first->next)
 		{
-			if (errorType == 104)	// segment fault //
-			{
-				YIELD_AND_REPORT();
-			}
+			RAIIListValidator _(*this, __FUNCTION__);
+			YIELD_ON_TYPE(104);
 			first->next->prev = NULL;
-			if (errorType == 105)	// segment fault // 
-			{
-				YIELD_AND_REPORT();
-			}
+			YIELD_ON_TYPE(105);
 			first = first->next;
-			if (errorType == 106)	// out of order //
-			{
-				YIELD_AND_REPORT();
-			}
+			YIELD_ON_TYPE(106);
 		}
-		else				// only one element in the list
+		else
 		{
-			if (errorType == 107)	// out of order //
-			{
-				printf("Remove: Switch to another thread!\n");
-				currentThread->Yield();
-			}
+			YIELD_ON_TYPE(107);
 			first = last = NULL;
 		}
-		if (errorType == 108)	// out of order //
-		{
-			YIELD_AND_REPORT();
-		}
+		YIELD_ON_TYPE(108);
 		delete element;
-		if (errorType == 109)	// out of order //
-		{
-			YIELD_AND_REPORT();
-		}
+		YIELD_ON_TYPE(109);
 
 		return itemPtr;
 	}
 }
 
 
-// return true if list has elements
 bool DLList::IsEmpty()
 {
 	if (first == NULL && last == NULL)
@@ -172,143 +145,100 @@ bool DLList::IsEmpty()
 }
 
 
-// routines to put/get items on/off list in order (sorted by key)
 void DLList::SortedInsert(void* item, int sortKey)
 {
 	DLLElement* element = new DLLElement(item, sortKey);
 
-	if (errorType == 1)		// switch before insertion //
-	{
-		YIELD_AND_REPORT();
-	}
+	YIELD_ON_TYPE(1);
 
 	// list is empty
 	if (!IsEmpty())
 	{
+		RAIIListValidator _(*this, __FUNCTION__);
 		first = last = element;
-		if (errorType == 2)		// after insert first element //
-		{
-			YIELD_AND_REPORT();
-		}
+		YIELD_ON_TYPE(102);
 		return;
 	}
 
-	if (errorType == 3)		// switch in 2nd insertion and later //
-	{
-		YIELD_AND_REPORT();
-	}
+	YIELD_ON_TYPE(3);
 
 	// insert at the top
 	if (sortKey <= first->key)
 	{
-		if (errorType == 4)		// in 2nd insertion and later //
-		{
-			YIELD_AND_REPORT();
-		}
+		RAIIListValidator _(*this, __FUNCTION__);
+		YIELD_ON_TYPE(4);
+
+		RAIINodeGuard _1(*element, "element");
+		RAIINodeGuard _2(*first, "first");
 		element->next = first;
-		if (errorType == 5)		// link list is damaged //
-		{
-			YIELD_AND_REPORT();
-		}
+		YIELD_ON_TYPE(5);
 		first->prev = element;
-		if (errorType == 6)		// sometimes let segment fault, or miss an item //
-		{
-			YIELD_AND_REPORT();
-		}
+
+		YIELD_ON_TYPE(6);
 		first = element;
-		if (errorType == 7)		// switch after second insertion, but not return //
-		{
-			YIELD_AND_REPORT();
-		}
+		YIELD_ON_TYPE(7);
 		return;
 	}
 
-	if (errorType == 8)		// segment fault or switch in last thread but successfully //
-	{
-		YIELD_AND_REPORT();
-	}
+	YIELD_ON_TYPE(8);
 
 	// inner node
 	DLLElement* ptr = first;
-	if (errorType == 9)		// segment fault or out of order or successful //
-	{
-		YIELD_AND_REPORT();
-	}
+	YIELD_ON_TYPE(9);
+
 	while (ptr)
 	{
-		if (errorType == 10) // segment fault or out of order //
+		YIELD_ON_TYPE(10);
+		if (ptr->key >= sortKey)
 		{
-			YIELD_AND_REPORT();
-		}
-		if (ptr->key >= sortKey)	// insert before this node
-		{
-			if (errorType == 11)	// usually successful but sometimes segment fault //
-			{
-				YIELD_AND_REPORT();
-			}
+			RAIIListValidator _(*this, __FUNCTION__);
+			YIELD_ON_TYPE(11);
+
+			RAIINodeGuard _2(*element, "element");
+			RAIINodeGuard _1(*ptr, "ptr");
+
 			element->next = ptr;
-			if (errorType == 12)	// usually successful but sometimes segment fault //
-			{
-				YIELD_AND_REPORT();
-			}
+			YIELD_ON_TYPE(12);
 			element->prev = ptr->prev;
-			if (errorType == 13)	// usually successful but sometimes segment fault //
-			{
-				YIELD_AND_REPORT();
-			}
+
+			YIELD_ON_TYPE(13);
+
 			ptr->prev->next = element;
-			if (errorType == 14)	// sometimes out of order //
-			{
-				YIELD_AND_REPORT();
-			}
+			YIELD_ON_TYPE(14);
 			ptr->prev = element;
-			if (errorType == 15)	// sometimes out of order //
-			{
-				YIELD_AND_REPORT();
-			}
+			YIELD_ON_TYPE(15);
 			return;
 		}
-		if (errorType == 16)	// maybe out of order or segment fault //
-		{
-			YIELD_AND_REPORT();
-		}
+		
+		YIELD_ON_TYPE(16);
 		ptr = ptr->next;
-		if (errorType == 17)	// maybe segment fault, or out of order, but successful occasionally //
-		{
-			YIELD_AND_REPORT();
-		}
+		YIELD_ON_TYPE(17);
 	}
+	YIELD_ON_TYPE(18);
 
-	if (errorType == 18)	//maybe out of order, segment fault, or so lucky to see success //
-	{
-		YIELD_AND_REPORT();
-	}
 
 	// insert at the bottom
-	last->next = element;
-	if (errorType == 19)	// I have seen segment fault, out of order, and success luckily //
 	{
-		YIELD_AND_REPORT();
+		RAIINodeGuard _1(*last, "last");
+		RAIINodeGuard _2(*element, "element");
+
+		last->next = element;
+
+		YIELD_ON_TYPE(19);
+
+		element->prev = last;
 	}
-	element->prev = last;
-	if (errorType == 20)	// out of order, segment fault, and successful at some time //
-	{
-		YIELD_AND_REPORT();
-	}
+	
+	YIELD_ON_TYPE(20);
 	last = element;
-	if (errorType == 21)	// out of order, successful sometimes... //
-		//   cannot believe that it's the last error... 
-		//   why can we find so many error here... whyyyyyyyyyy
-	{
-		YIELD_AND_REPORT();
-	}
+	YIELD_ON_TYPE(21);
 }
 
 
-// remove first item with key==sortKey
-//   return NULL if no such item exists
 void* DLList::SortedRemove(int sortKey)
 {
+	RAIIListValidator _(*this, __FUNCTION__);
+
 	// list is empty
 	if (!IsEmpty())
 	{
@@ -318,15 +248,123 @@ void* DLList::SortedRemove(int sortKey)
 	DLLElement* ptr = first;
 	while (ptr)
 	{
-		// found it
 		if (ptr->key == sortKey)
 		{
+			YIELD_ON_TYPE(201);
+			ptr->next->prev = ptr->prev;
+			YIELD_ON_TYPE(202);
+			ptr->next = NULL;
+			YIELD_ON_TYPE(203);
+			ptr->prev->next = ptr->next;
+			YIELD_ON_TYPE(204);
+			ptr->prev = NULL;
+			YIELD_ON_TYPE(205);
 			return ptr->item;
 		}
 
 		ptr = ptr->next;
 	}
 
-	// Aoh, not found
 	return NULL;
+}
+
+RAIIListValidator::RAIIListValidator(DLList& list, const char* tag)
+	: list_(&list), tag_(tag)
+{
+	if (!test())
+	{
+		printf("In \"%s\":\n  the linked list is no longer sorted.", tag);
+		ASSERT(false);
+	}
+}
+
+RAIIListValidator::~RAIIListValidator()
+{
+	if (!test())
+	{
+		printf("In \"%s\":\n  the linked list is no longer sorted.", tag_);
+		ASSERT(false);
+	}
+}
+
+bool RAIIListValidator::test()
+{
+	if (list_->IsEmpty())
+	{
+		return true;
+	}
+
+	if (list_->first)
+		ASSERT(list_->first->prev == NULL);
+	if (list_->last)
+		ASSERT(list_->last->next == NULL);
+
+	for (DLLElement* p = list_->first;p;p = p->next)
+	{
+		if (p && p->next)
+			ASSERT(p->next->prev == p);
+		if (p && p->prev)
+			ASSERT(p->prev->next == p);
+	}
+
+	return is_sorted_asc(list_->first) || is_sorted_dsc(list_->first);
+}
+
+bool RAIIListValidator::is_sorted_asc(DLLElement* head)
+{
+	if (head == NULL)
+		return true;
+
+	for (DLLElement* t = head; t->next != NULL; t = t->next)
+		if (t->key <= t->next->key)
+			return false;
+	return true;
+}
+
+bool RAIIListValidator::is_sorted_dsc(DLLElement* head)
+{
+	if (head == NULL)
+		return true;
+
+	// Traverse the list till last node and return
+	// false if a node is smaller than or equal
+	// its next.
+	for (DLLElement* t = head; t->next != NULL; t = t->next)
+		if (t->key >= t->next->key)
+			return false;
+	return true;
+}
+
+RAIINodeGuard::RAIINodeGuard(DLLElement& ele, char* name)
+	: ele_(&ele), name_(name)
+{
+	test();
+}
+
+RAIINodeGuard::~RAIINodeGuard()
+{
+	test();
+}
+
+void RAIINodeGuard::test()
+{
+	if (ele_->prev && ele_->prev->next != ele_)
+	{
+		printf("%s has wrong previous relationship.\n", name_);
+		ASSERT(false);
+	}
+
+	if (ele_->next && ele_->next->prev != ele_)
+	{
+		printf("%s has wrong next relationship.\n", name_);
+		ASSERT(false);
+	}
+
+	int diff1 = ele_->prev ? ele_->key - ele_->prev->key : 0;
+	int diff2 = ele_->next ? ele_->next->key - ele_->key : 0;
+	if (diff1 && diff2 && diff1 * diff2 < 0)
+	{
+		printf("%s has wrong order. %d %d \n", name_, diff1, diff2);
+		ASSERT(false);
+	}
 }

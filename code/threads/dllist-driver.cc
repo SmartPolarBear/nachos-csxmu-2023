@@ -4,28 +4,23 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+static unsigned int seed = 1204;
+void srand (int newseed) {
+    seed = (unsigned)newseed & 0x7fffffffU;
+}
 
-// a list of the keys inserted into doubly-linked list, just for test
-const int keyList[10] = {12, 3, 9, 22, 1, 11, 33, 2, 44, 13};
-
-
-// generate a random number between 0~99
-int getRandom()
-{
-	struct timeval tv;
-    struct timezone tz;
-    gettimeofday(&tv, &tz);
-    return ((tv.tv_usec * 2 + 1) % 100);
+int rand(void) {
+    seed = (seed * 1103515245U + 12345U) & 0x7fffffffU;
+    return (int)seed;
 }
 
 
 // insert N items into L
 extern void Insert(DLList *L, int N, int whichThread)
 {
-	int key;
 	for (int i = 0; i < N; ++i)
 	{
-		key = getRandom();
+		int key = rand() % 50;
 		L->SortedInsert(NULL, key);
 		printf("Thread %d inserts: %d\n", whichThread, key);
 	}
