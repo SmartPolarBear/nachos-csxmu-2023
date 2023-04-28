@@ -37,6 +37,8 @@ DLLElement::DLLElement(void* itemPtr, int sortKey)
 DLList::DLList()
 {
 	first = last = NULL;
+	lock_ = new Lock("listlock");
+	condvar_ = new Condition("listcondvar");
 }
 
 
@@ -47,11 +49,16 @@ DLList::~DLList()
 	{
 		Remove(&key);
 	}
+
+	delete lock_;
+	delete condvar_;
 }
 
 
 void DLList::Prepend(void* item)
 {
+	LockGuard g(lock_);
+
 	RAIIListValidator _(*this, __FUNCTION__);
 
 	DLLElement* element = new DLLElement(item, 0);
@@ -67,11 +74,15 @@ void DLList::Prepend(void* item)
 		first->prev = element;
 		first = element;
 	}
+
+	condvar_->Signal(lock_);
 }
 
 
 void DLList::Append(void* item)
 {
+	LockGuard g(lock_);
+
 	RAIIListValidator _(*this, __FUNCTION__);
 
 	DLLElement* element = new DLLElement(item, 0);
@@ -87,13 +98,19 @@ void DLList::Append(void* item)
 		last->next = element;
 		last = element;
 	}
+
+	condvar_->Signal(lock_);
 }
 
 
 void* DLList::Remove(int* keyPtr)
 {
+	LockGuard g(lock_);
 
 	YIELD_ON_TYPE(101);
+
+	while (IsEmpty())
+		condvar_->Wait(lock_);		// wait until list isn't empty
 
 	if (!IsEmpty())
 	{
@@ -138,6 +155,8 @@ void* DLList::Remove(int* keyPtr)
 
 bool DLList::IsEmpty()
 {
+	LockGuard g(lock_);
+
 	if (first == NULL && last == NULL)
 		return false;
 	else
@@ -147,6 +166,8 @@ bool DLList::IsEmpty()
 
 void DLList::SortedInsert(void* item, int sortKey)
 {
+	LockGuard g(lock_);
+
 	DLLElement* element = new DLLElement(item, sortKey);
 
 	YIELD_ON_TYPE(1);
@@ -194,8 +215,8 @@ void DLList::SortedInsert(void* item, int sortKey)
 			RAIIListValidator _(*this, __FUNCTION__);
 			YIELD_ON_TYPE(11);
 
-			RAIINodeGuard _2(*element, "element");
-			RAIINodeGuard _1(*ptr, "ptr");
+			RAIINodeGuard _1(*element, "element");
+			RAIINodeGuard _2(*ptr, "ptr");
 
 			element->next = ptr;
 			YIELD_ON_TYPE(12);
@@ -203,13 +224,13 @@ void DLList::SortedInsert(void* item, int sortKey)
 
 			YIELD_ON_TYPE(13);
 
-			ptr->prev->next = element;
+			if (ptr->prev) ptr->prev->next = element;
 			YIELD_ON_TYPE(14);
 			ptr->prev = element;
 			YIELD_ON_TYPE(15);
 			return;
 		}
-		
+
 		YIELD_ON_TYPE(16);
 		ptr = ptr->next;
 		YIELD_ON_TYPE(17);
@@ -227,17 +248,26 @@ void DLList::SortedInsert(void* item, int sortKey)
 		YIELD_ON_TYPE(19);
 
 		element->prev = last;
+		element->next = NULL;
+
+		YIELD_ON_TYPE(20);
+		last = element;
 	}
-	
-	YIELD_ON_TYPE(20);
-	last = element;
 	YIELD_ON_TYPE(21);
+
+	condvar_->Signal(lock_);
 }
 
 
 void* DLList::SortedRemove(int sortKey)
 {
+	LockGuard g(lock_);
+
 	RAIIListValidator _(*this, __FUNCTION__);
+
+
+	while (IsEmpty())
+		condvar_->Wait(lock_);		// wait until list isn't empty
 
 	// list is empty
 	if (!IsEmpty())
@@ -338,12 +368,27 @@ bool RAIIListValidator::is_sorted_dsc(DLLElement* head)
 RAIINodeGuard::RAIINodeGuard(DLLElement& ele, char* name)
 	: ele_(&ele), name_(name)
 {
+	printf("Thread %s enter guarded section for %s. ", currentThread->getName(), name_);
+	if (ele_->prev || ele_->next)
+	{
+		if (!ele_->prev)
+		{
+			printf("It's first node.");
+		}
+		if (!ele_->next)
+		{
+			printf("It's last node.");
+		}
+	}
+
+	printf("\n");
 	test();
 }
 
 RAIINodeGuard::~RAIINodeGuard()
 {
 	test();
+	printf("Thread %s exit guarded section for %s\n", currentThread->getName(), name_);
 }
 
 void RAIINodeGuard::test()
@@ -364,7 +409,21 @@ void RAIINodeGuard::test()
 	int diff2 = ele_->next ? ele_->next->key - ele_->key : 0;
 	if (diff1 && diff2 && diff1 * diff2 < 0)
 	{
-		printf("%s has wrong order. %d %d \n", name_, diff1, diff2);
+		printf("%s has wrong order. Values are: ", name_);
+		if (ele_->prev)
+		{
+			printf("%d ", ele_->prev->key);
+		}
+
+		printf("%d ", ele_->key);
+
+		if (ele_->next)
+		{
+			printf("%d ", ele_->next->key);
+		}
+
+		printf("\n");
+
 		ASSERT(false);
 	}
 }

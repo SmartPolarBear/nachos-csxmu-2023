@@ -20,6 +20,7 @@
 #include "copyright.h"
 #include "thread.h"
 #include "list.h"
+#include "interrupt.h"
 
 // The following class defines a "semaphore" whose value is a non-negative
 // integer.  The semaphore has only two operations P() and V():
@@ -37,18 +38,18 @@
 // now be different.
 
 class Semaphore {
-  public:
-    Semaphore(char* debugName, int initialValue);	// set initial value
-    ~Semaphore();   					// de-allocate semaphore
-    char* getName() { return name;}			// debugging assist
-    
-    void P();	 // these are the only operations on a semaphore
-    void V();	 // they are both *atomic*
-    
-  private:
-    char* name;        // useful for debugging
-    int value;         // semaphore value, always >= 0
-    List *queue;       // threads waiting in P() for the value to be > 0
+public:
+  Semaphore(char* debugName, int initialValue);	// set initial value
+  ~Semaphore();   					// de-allocate semaphore
+  char* getName() { return name; }			// debugging assist
+
+  void P();	 // these are the only operations on a semaphore
+  void V();	 // they are both *atomic*
+
+private:
+  char* name;        // useful for debugging
+  int value;         // semaphore value, always >= 0
+  List* queue;       // threads waiting in P() for the value to be > 0
 };
 
 // The following class defines a "lock".  A lock can be BUSY or FREE.
@@ -64,22 +65,25 @@ class Semaphore {
 // (because the value might change immediately after you read it).  
 
 class Lock {
-  public:
-    Lock(char* debugName);  		// initialize lock to be FREE
-    ~Lock();				// deallocate lock
-    char* getName() { return name; }	// debugging assist
+public:
+  Lock(char* debugName);  		// initialize lock to be FREE
+  ~Lock();				// deallocate lock
+  char* getName() { return name; }	// debugging assist
 
-    void Acquire(); // these are the only operations on a lock
-    void Release(); // they are both *atomic*
+  void Acquire(); // these are the only operations on a lock
+  void Release(); // they are both *atomic*
 
-    bool isHeldByCurrentThread();	// true if the current thread
-					// holds this lock.  Useful for
-					// checking in Release, and in
-					// Condition variable ops below.
+  bool isHeldByCurrentThread();	// true if the current thread
+  // holds this lock.  Useful for
+  // checking in Release, and in
+  // Condition variable ops below.
 
-  private:
-    char* name;				// for debugging
-    // plus some other stuff you'll need to define
+private:
+  char* name;				// for debugging
+  // plus some other stuff you'll need to define
+  Thread* owner_;
+  Semaphore sem_;
+  bool locked_;
 };
 
 // The following class defines a "condition variable".  A condition
@@ -115,22 +119,52 @@ class Lock {
 // thread gets a chance to run.
 
 class Condition {
-  public:
-    Condition(char* debugName);		// initialize condition to 
-					// "no one waiting"
-    ~Condition();			// deallocate the condition
-    char* getName() { return (name); }
-    
-    void Wait(Lock *conditionLock); 	// these are the 3 operations on 
-					// condition variables; releasing the 
-					// lock and going to sleep are 
-					// *atomic* in Wait()
-    void Signal(Lock *conditionLock);   // conditionLock must be held by
-    void Broadcast(Lock *conditionLock);// the currentThread for all of 
-					// these operations
+public:
+  Condition(char* debugName);		// initialize condition to 
+  // "no one waiting"
+  ~Condition();			// deallocate the condition
+  char* getName() { return (name); }
 
-  private:
-    char* name;
-    // plus some other stuff you'll need to define
+  void Wait(Lock* conditionLock); 	// these are the 3 operations on 
+  // condition variables; releasing the 
+  // lock and going to sleep are 
+  // *atomic* in Wait()
+  void Signal(Lock* conditionLock);   // conditionLock must be held by
+  void Broadcast(Lock* conditionLock);// the currentThread for all of 
+  // these operations
+
+private:
+  char* name;
+  // plus some other stuff you'll need to define
+  List* waitlist_;
 };
+
+class InterruptScope final {
+public:
+  InterruptScope(IntStatus next);
+  ~InterruptScope();
+  InterruptScope(const InterruptScope&) = delete;
+  InterruptScope& operator=(const InterruptScope&) = delete;
+private:
+  IntStatus old_;
+};
+
+class LockGuard final {
+public:
+  LockGuard(Lock& lock):lock_(&lock) {
+    lock_->Acquire();
+  }
+  
+  LockGuard(Lock* lock):lock_(lock) {
+    lock_->Acquire();
+  }
+
+  ~LockGuard()
+  {
+    lock_->Release();
+  }
+private:
+  Lock* lock_;
+};
+
 #endif // SYNCH_H

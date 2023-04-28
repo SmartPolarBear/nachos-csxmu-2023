@@ -84,6 +84,8 @@ ThreadTest1()
 //  and then remove items at the top of the list by those threads.
 //----------------------------------------------------------------------
 
+char name[64] = { 0 };
+
 void
 ThreadTest2()
 {
@@ -95,7 +97,9 @@ ThreadTest2()
     // fork thread
     for (int i = 1; i < threadnum; ++i)
     {
-	Thread *t = new Thread("forked thread");
+        memset(name, 0, sizeof(name));
+        snprintf(name, 64, "thread %d", i);
+        Thread* t = new Thread(name);
         t->Fork(SimpleThread2, i);
     }
     SimpleThread2(0);
